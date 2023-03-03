@@ -1,65 +1,101 @@
 const router = require('express').Router();
-const { User, Post } = require('../models');
-const checkAuth = require('../utils/auth');
+const { Article, Comment, User} = require('../models');
+const withAuth = require('../utils/auth');
 
-// HOMEPAGE RENDER
 router.get('/', async (req, res) => {
-    try {
+  try {
+    const articleData = await Article.findAll({
+      include: [
+        {
+          model: Comment,
+          attributes: ['content'],
+        },
+        {
+          model: User,
+          attributes: ['username'],
+        },
+      ],
+    });
 
-        const postData = await Post.findAll({ include: [{ model: User, attributes: ['name'] }] });
+    const articles = articleData.map((article) => article.get({ plain: true }));
 
-        const posts = postData.map((post) => post.get({ plain: true }));
-
-        res.render('homepage', {
-            posts,
-            logged_in: req.session.logged_in
-        });
-
-    } catch (err) { res.status(500).json(err) }
+    res.render('homepage', { 
+      articles, 
+      logged_in: req.session.logged_in 
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json(err);
+  }
 });
 
-// POST BY ID
-router.get('/post/:id', async (req, res) => {
-    try {
-        const postData = await Post.findByPk(req.params.id, { include: [{ model: User, attributes: ['name'] }] });
-
-        const post = postData.get({ plain: true });
-
-        res.render('post', {
-            ...post,
-            logged_in: req.session.logged_in
-        });
-
-    } catch (err) { res.status(500).json(err) }
+router.get('/signin', (req, res) => {
+  if (req.session.logged_in) {
+    res.redirect('/');
+    return;
+  }
+  res.render('signin');
 });
 
-// DASHBOARD 
-router.get('/dashboard', checkAuth, async (req, res) => {
-    try {
-        const userData = await User.findByPk(req.session.user_id, {
-            attributes: { exclude: ['password'] },
-            include: [{ model: Post }]
-        });
+router.get('/signup', (req, res) => {
+  if (req.session.logged_in) {
+    res.redirect('/');
+    return;
+  }
+  res.render('signup');
+});
 
-        const user = userData.get({ plain: true });
+router.get('/articles/:id', async (req, res) => {
+  try {
+    const articleData = await Article.findByPk(req.params.id, {
+      include: [
+        {
+          model: Comment,
+          attributes: ['id', 'content', 'user_id', 'created_at'],
+          include: {
+            model: User,
+            attributes: ['username']
+          }
+        },
+        {
+          model: User,
+          attributes: ['username'],
+        },
+      ],
+    });
 
-        res.render('dashboard', {
-            ...user,
-            logged_in: true
-        });
+    const articleSingle = articleData.get({ plain: true });
 
-    } catch (err) { res.status(500).json(err) }
-})
+    res.render('viewArticle', { 
+      articleSingle, 
+      logged_in: req.session.logged_in 
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json(err);
+  }
+});
 
-// LOGIN
-router.get('/login', (req, res) => {
+// ORGANIZATIONAL NOTE: Included this one withAuth route here to avoid adding commentRoutes.js file.
+router.get('/updateComment/:id', withAuth, async (req, res) => {  
+  try {
+    const commentData = await Comment.findByPk(req.params.id, {
+      where: {
+        id: req.params.id,
+        user_id: req.session.user_id,
+      },
+    });
 
-    if (req.session.logged_in) {
-        res.redirect('/profile');
-        return;
-    }
+    const comment = commentData.get({ plain: true });
 
-    res.render('login')
+    res.render('updateComment', {
+      comment,
+      logged_in: req.session.logged_in,
+    });
+  } catch (err) {
+    console.log(err);
+    res.status(500).json(err);
+  }
 });
 
 module.exports = router;
